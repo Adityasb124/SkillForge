@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SkillForge Dashboard</title>
+    <style>
+        .progress-card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            margin: 10px;
+            border-radius: 8px;
+        }
+        .score {
+            font-size: 24px;
+            color: #4CAF50;
+        }
+        .attempts-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Your Learning Progress</h1>
+    
+    <div class="progress-card">
+        <h2>Overall Statistics</h2>
+        <p>Total Attempts: {{ stats.total_attempts }}</p>
+        <p>Average Score: <span class="score">{{ stats.average_score }}%</span></p>
+    </div>
+
+    <div class="attempts-list">
+        <h2>Recent Attempts</h2>
+        {% for attempt in attempts %}
+        <div class="progress-card">
+            <p>Date: {{ attempt.timestamp.strftime('%Y-%m-%d %H:%M') }}</p>
+            <p>Score: {{ attempt.score }}%</p>
+            <p>Target Text: "{{ attempt.target_text }}"</p>
+            <p>Your Speech: "{{ attempt.spoken_text }}"</p>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

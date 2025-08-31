@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillForge</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <style>
+        body { 
+            font-family: Arial; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            margin: 0; 
+            padding: 20px; 
+            color: white; 
+            text-align: center; 
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { font-size: 3rem; margin-bottom: 2rem; }
+        .status { 
+            background: rgba(255,255,255,0.1); 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin: 20px 0;
+        }
+        .record-btn {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 20px;
+        }
+        .record-btn:hover {
+            background: #45a049;
+        }
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .practice-container {
+            display: none;
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        .video-container {
+            width: 640px;
+            height: 480px;
+            margin: 20px auto;
+            background: #000;
+            border-radius: 10px;
+        }
+        
+        #userVideo {
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .result-container {
+            background: rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .feedback {
+            font-size: 1.2em;
+            color: #ffd700;
+            margin: 15px 0;
+        }
+
+        .transcription {
+            margin-top: 10px;
+        }
+
+        .missed {
+            color: #ff4444;
+            text-decoration: line-through;
+        }
+
+        .mispronounced {
+            color: #ffaa00;
+            border-bottom: 2px wavy #ffaa00;
+            cursor: help;
+        }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h1>🎤 Welcome to SkillForge</h1>
+        
+        <div class='nav-buttons'>
+            <button class="record-btn" onclick="startPractice()">Start Practice</button>
+            <button class="record-btn" onclick="location.href='/dashboard'">Dashboard</button>
+        </div>
+
+        <div id="practice-section" class="practice-container">
+            <h2>Speech Practice Session</h2>
+            <div class="video-container">
+                <video id="userVideo" autoplay muted playsinline></video>
+            </div>
+            <div id="current-sentence" class="status">
+                Loading practice sentence...
+            </div>
+            <div class="controls">
+                <button class="record-btn" id="startBtn" onclick="startRecording()">Start Recording</button>
+                <button class="record-btn" id="stopBtn" onclick="stopRecording()" disabled>Stop Recording</button>
+            </div>
+            <div id="transcription" class="status"></div>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        let stream;
+
+        async function startPractice() {
+            try {
+                // Get both audio and video permissions
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: true, 
+                    video: true 
+                });
+                
+                // Show video feed
+                const videoElement = document.getElementById('userVideo');
+                videoElement.srcObject = stream;
+                
+                // Show practice section
+                document.getElementById('practice-section').style.display = 'block';
+                
+                // Initialize media recorder with proper audio settings
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm',
+                    audioBitsPerSecond: 128000
+                });
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await sendAudioToServer(audioBlob);
+                    audioChunks = [];
+                };
+
+                // Load initial sentence
+                await loadPracticeSentence();
+                
+            } catch (error) {
+                console.error('Media access error:', error);
+                alert('Please allow camera and microphone access to use this feature');
+            }
+        }
+
+        async function loadPracticeSentence() {
+            try {
+                const response = await fetch('/api/lessons/sentences/beginner');
+                const data = await response.json();
+                document.getElementById('current-sentence').textContent = 
+                    "Please read: " + data[0];
+            } catch (error) {
+                console.error('Error loading sentence:', error);
+            }
+        }
+
+        function startRecording() {
+            audioChunks = [];
+            mediaRecorder.start();
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+        }
+
+        async function sendAudioToServer(audioBlob) {
+            try {
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'recording.webm');
+                formData.append('target_sentence', 
+                    document.getElementById('current-sentence').textContent.trim());
+                
+                const response = await fetch('/api/lessons/speech/recognize', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    throw new Error(data.error || 'Analysis failed');
+                }
+                
+            } catch (error) {
+                console.error('Error sending audio:', error);
+                alert('Sorry, there was a problem analyzing your speech. Please try again.');
+            }
+        }
+
+        function displayResults(data) {
+            const resultDiv = document.getElementById('transcription');
+            const analysis = data.analysis;
+            
+            let html = `
+                <div class="result-container">
+                    <h3>Your Score: ${analysis.overall_score}/100 🎉</h3>
+                    <p class="feedback">${analysis.feedback || 'Keep practicing!'}</p>
+                    <div class="transcription">
+                        <h4>What you said:</h4>
+                        <p>${analysis.transcribed_text}</p>
+                        <h4>Expected:</h4>
+                        <p>${analysis.expected_text}</p>
+                    </div>
+                    ${analysis.fluency_analysis ? `
+                        <div class="fluency">
+                            <h4>Fluency Analysis:</h4>
+                            <p>Speaking Rate: ${analysis.fluency_analysis.speaking_rate} words/min</p>
+                            <p>Recommendations: ${analysis.fluency_analysis.recommendations.join(', ')}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            resultDiv.innerHTML = html;
+        }
+
+        function highlightDifferences(text, analysis) {
+            let words = text.split(' ');
+            return words.map(word => {
+                const lowercaseWord = word.toLowerCase();
+                if (analysis.missed_words.includes(lowercaseWord)) {
+                    return `<span class="missed">${word}</span>`;
+                }
+                if (lowercaseWord in analysis.mispronounced) {
+                    return `<span class="mispronounced" title="Try saying: ${analysis.mispronounced[lowercaseWord]}">${word}</span>`;
+                }
+                return word;
+            }).join(' ');
+        }
+    </script>
+</body>
+</html>
